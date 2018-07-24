@@ -22,6 +22,7 @@
         "drupal/bootstrap": "^3.11",
         "drupal/console": "^1.0.2",
         "drupal/core": "~8.5",
+        "drupal/toc_filter": "2.x-dev",
         "drupal/token": "^1.1",
         "drush/drush": "~8.0|^9.0.0-beta8",
         "webflo/drupal-finder": "^1.0.0",
