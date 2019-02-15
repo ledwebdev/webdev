@@ -123,7 +123,7 @@ function orcid_block_view() {
   $orcid_token = variable_get('orcid_api_token', '');
   $orcid_server = variable_get('orcid_api_server', '');
 
-  //ORCID id comes loaded node
+  //ORCID id comes from loaded drupal node
   $block = array();
   if ( arg(0) == 'node' && is_numeric(arg(1)) && ! arg(2) ) {
       $node = node_load(arg(1));
