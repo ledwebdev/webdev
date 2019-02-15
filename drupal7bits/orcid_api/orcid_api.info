@@ -1,0 +1,7 @@
+name = ORCID Api
+description = ORCID Api connection
+package = System
+core = 7.x
+
+files[] = orcid_api.module
+configure = admin/config/system/orcid_api

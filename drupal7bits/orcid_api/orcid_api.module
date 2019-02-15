@@ -1,0 +1,194 @@
+<?php
+/**
+    ORCID API Block Integration
+    - Art Rhyno
+
+    Sample integration for ORCID API.
+
+    (c) Copyright GNU General Public License (GPL)
+ */
+
+/**
+ * Block name
+ */
+function orcid_api_block_info() {
+  $blocks = array();
+  $blocks['orcid_block'] = array(
+    'info' => t('ORCID Api'),
+  );
+  
+  return $blocks;
+}//orcid_api_block_info
+
+/**
+ * Implements hook_menu()
+ */
+function orcid_api_menu() {
+  $items = array();
+  $items['admin/config/system/orcid_api'] = array(
+      'title' => 'ORCID Config',
+      'description' => 'Config values for ORCID Access',
+      'page callback' => 'drupal_get_form',
+      'page arguments' => array('orcid_api_form'),
+      'access arguments' => array('access administration pages'),
+      'type' => MENU_NORMAL_ITEM,
+  );
+  return $items;
+}//orcid_api_menu
+
+/**
+ * Admin form for config values
+ */
+function orcid_api_form() {
+  $form = array();
+
+  //API server
+  $form['orcid_api_server'] = array(
+      '#type' => 'textfield',
+      '#title' => t('ORCID Server'),
+      '#default_value' => variable_get('orcid_api_server', ''),
+      '#size' => 100,
+      '#maxlength' => 255,
+      '#description' => t("ORCID server for API call."),
+      '#required' => TRUE,
+  );
+
+  //API token
+  $form['orcid_api_token'] = array(
+      '#type' => 'textfield',
+      '#title' => t('ORCID Token'),
+      '#default_value' => variable_get('orcid_api_token', ''),
+      '#size' => 25,
+      '#maxlength' => 40,
+      '#description' => t("ORCID token for access."),
+      '#required' => TRUE,
+  );
+
+  return system_settings_form($form);
+}//orcid_api_form
+
+
+/**
+ * Implements hook_block_view()
+ */
+function orcid_api_block_view($delta='') {
+  $block = array();
+  
+  switch($delta) {
+    case 'orcid_block' :
+      $block['content'] = orcid_block_view();
+      break;
+  }//switch
+  
+  return $block;
+}//orcid_api_block_view
+
+/**
+ * Return value of first child XML node 
+ * or fallback value if child does not
+ * exist
+ */
+function getXmlChildVal($child, $tag, $fallback) {
+                  
+    $cnode = $child->getElementsByTagName($tag);
+    if ($cnode) {  
+        if (strlen($cnode[0]->nodeValue) > 0) {
+            return $cnode[0]->nodeValue;
+        }//if
+    }//if
+    return $fallback;
+}//getXmlChildVal
+
+/**
+ * Return value of first child XML node 
+ * or blank if child does not exist
+ */
+function getXmlVal($child, $tag) {
+    $cnodes = $child->getElementsByTagName($tag);
+    if ($cnodes && strlen($cnodes[0]->nodeValue) > 0) {
+        return "<b>" . $tag . "</b>:"  . $cnodes[0]->nodeValue . "<br/>";
+    }//if
+    return "";
+}//getXmlVal
+
+/**
+ * Return array of HTML for display
+ * the network call for ORCID happens here
+ */
+function orcid_block_view() {
+  //Blocks can have their own CSS if needed for more extensive styling
+  //drupal_add_css(drupal_get_path('module', 'orcid_api') . '/custom.css');
+
+  //get config values
+  $orcid_token = variable_get('orcid_api_token', '');
+  $orcid_server = variable_get('orcid_api_server', '');
+
+  //ORCID id comes loaded node
+  $block = array();
+  if ( arg(0) == 'node' && is_numeric(arg(1)) && ! arg(2) ) {
+      $node = node_load(arg(1));
+      if ($node) $orcid_id = $node->field_orcid_id['und'][0]['value'];
+  }//if
+
+  $htmltext = "";
+  if (strlen($orcid_id) > 0 && strlen($orcid_token) > 0 
+      && strlen($orcid_server)) 
+  {
+      $server_url = $orcid_server . "/" . $orcid_id . "/record";
+
+      $context = stream_context_create(array(
+          'https' => array(
+              'header'  => "Authorization: Bearer " . $orcid_token
+          )
+      ));
+
+      //network call
+      $data = file_get_contents($server_url, false, $context);
+
+      //DOM setup for xpath
+      $doc = new DOMDocument();
+      $dom = $doc->loadXML($data);
+      $xpath = new DOMXpath($doc);
+
+      //namespaces for xpath 
+      $xpath->registerNamespace('work', 'http://www.orcid.org/ns/work');
+      $xpath->registerNamespace('common','http://www.orcid.org/ns/common');
+
+      //this example works with full record but ORCID call can be much more
+      //specific, e.g. orcid_server/external-identifiers
+      $htmltext = "";
+      $nodes = $xpath->query('//work:work-summary');
+      foreach ($nodes as $node) {
+          foreach ( $node->childNodes as $child ) {
+              if ($child->nodeName == 'common:source') {
+                  $htmltext .= getXmlVal($child,'uri');
+              }//if
+              if ($child->nodeName == 'work:title') {
+                  $htmltext .= getXmlVal($child,'title');
+              }//if
+              if ($child->nodeName == 'common:publication-date') {
+                  $year = getXmlChildVal($child,'year', 'XXXX');
+                  $month = getXmlChildVal($child,'month', 'XX');
+                  $day = getXmlChildVal($child,'day', 'XX');
+                  $htmltext .= ("<b>date</b>: " . $year . "-" . $month . 
+                      "-" . $day . "<br/>");
+              }//if
+              if ($child->nodeName == 'work:type') $htmltext .= 
+                  ("<b>type</b>: " . $child->nodeValue . "<br/>");
+          }//foreach
+          $htmltext .= "<hr/>";
+      }//foreach
+  } else {
+      $htmltext = "<pre>unable to detect ORCID Id or Token</pre>";
+  }//if
+
+  //render block output in html
+  $block = array(
+      'message' => array( 
+      '#type' => 'markup', 
+      '#markup' => $htmltext, 
+      '#suffix' => '', 
+      ), 
+  ); 
+  return $block; 
+}//orcid_block_view
